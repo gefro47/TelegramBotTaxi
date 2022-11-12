@@ -9,6 +9,7 @@ import dev.inmo.tgbotapi.extensions.api.edit.edit
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
+import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onContentMessage
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onLocation
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onMessageDataCallbackQuery
 import dev.inmo.tgbotapi.extensions.utils.*
@@ -133,6 +134,32 @@ suspend fun BehaviourContext.clientBot() {
                     }
                     println("decline")
                 }
+                "order_decline" -> {
+                    edit(
+                        it.message.withContent<TextContent>() ?: it.let {
+                            answer(it, "Unsupported message type :(")
+                            return@onMessageDataCallbackQuery
+                        }
+                    ) {
+                        regular("Send your location for start.")
+                    }
+                    resetClient(client)
+                    println("decline")
+                }
+                "order_accept" -> {
+                    edit(
+                        it.message.withContent<TextContent>() ?: it.let {
+                            answer(it, "Unsupported message type :(")
+                            return@onMessageDataCallbackQuery
+                        }
+                    ) {
+                        regular("Wait your driver.")
+                    }
+                    transaction {
+                        client.dialogState = StateOfClient.StateWaitDriver
+                    }
+                    println("accept")
+                }
             }
         }else{
 
@@ -178,8 +205,21 @@ suspend fun BehaviourContext.clientBot() {
                                             launch(Dispatchers.IO) {
                                                 send(
                                                     it.chat.id,
-                                                    response.features.first().properties.summary.distance.toString()
+                                                    """
+                                                        ⏱️ Driver :
+                                                        💶 Trip amount: ${calculateTrip(response.features.first().properties.summary.distance)} €
+                                                    """.trimIndent(),
+                                                    replyMarkup = inlineKeyboard {
+                                                        row {
+                                                            dataButton("Decline", "order_decline")
+                                                            dataButton("Accept", "order_accept")
+                                                        }
+                                                    }
                                                 )
+                                                transaction {
+                                                    client.price = calculateTrip(response.features.first().properties.summary.distance)
+                                                    client.distance = response.features.first().properties.summary.distance
+                                                }
                                             }
                                         } else {
                                             launch(Dispatchers.IO) {
@@ -330,6 +370,8 @@ fun resetClient(client: Client): Boolean{
     }
 }
 
-fun calculateTrip(){
-
+fun calculateTrip(distance: Double): Double{
+    val tariff = 0.5
+    println(distance)
+    return ((distance/1000)*tariff)+1
 }
