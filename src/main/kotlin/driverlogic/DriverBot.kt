@@ -1,5 +1,6 @@
 package driverlogic
 
+import clientlogic.ClientBotLogic
 import com.soywiz.klock.DateTimeSpan
 import database.Driver
 import database.Drivers
@@ -18,83 +19,89 @@ import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.StaticLocationContent
 import org.jetbrains.exposed.sql.transactions.transaction
 
-suspend fun BehaviourContext.driverBot() {
-    println(getMe())
+class DriverBot {
+    lateinit var context: BehaviourContext
+    lateinit var clientBot: ClientBotLogic
 
-    onCommand("start") {
-        val privateChat = checkPrivateChat(this, it as CommonMessage<MessageContent>) ?: return@onCommand
-        val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onCommand
+    suspend fun driverBot() {
+        println(context.getMe())
 
-        if (driver.state !in listOf(DriverState.STARTED, DriverState.WAIT_FOR_ORDER)) {
-            reply(it, "Unexpected state: ${driver.state}")
-            return@onCommand
-        }
-        transaction {
-            driver.state = DriverState.STARTED
-            driver.currentLocationLat = null
-            driver.currentLocationLon = null
-        }
+        context.onCommand("start") {
+            val privateChat = checkPrivateChat(this, it as CommonMessage<MessageContent>) ?: return@onCommand
+            val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onCommand
 
-        reply(it, "Hello, ${privateChat.firstName} ${privateChat.lastName}! " +
-                "To start as a taxi driver, please, send me your live location. " +
-                "If you'd like to stop waiting for passengers, just stop sharing your location.")
-    }
-
-    onStaticLocation {
-        getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onStaticLocation
-        reply(it, "Please, use Live Location sharing!")
-    }
-
-    onLiveLocation {
-        val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onLiveLocation
-        if (driver.state !in listOf(DriverState.WAIT_FOR_ORDER, DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
-            transaction {
-                driver.state = DriverState.WAIT_FOR_ORDER
+            if (driver.state !in listOf(DriverState.STARTED, DriverState.WAIT_FOR_ORDER)) {
+                reply(it, "Unexpected state: ${driver.state}")
+                return@onCommand
             }
-        }
-        transaction {
-            driver.currentLocationLat = it.content.location.latitude
-            driver.currentLocationLon = it.content.location.longitude
-        }
-        reply(it, "Thank you for sharing your location! We're looking for the passengers for you. " +
-                "If you'd like to stop waiting for passengers, just stop sharing your location.")
-    }
-
-    onEditedLocation {
-        val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onEditedLocation
-        if (driver.state !in listOf(DriverState.WAIT_FOR_ORDER, DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
-            transaction {
-                driver.state = DriverState.WAIT_FOR_ORDER
-            }
-        }
-        transaction {
-            driver.currentLocationLat = it.content.location.latitude
-            driver.currentLocationLon = it.content.location.longitude
-        }
-
-        val livePeriod = DateTimeSpan(seconds = it.content.location.liveLocationOrThrow().livePeriod - 30)
-        val endDate = it.date + livePeriod
-        if (endDate >= (it.editDate ?: endDate) || it.content is StaticLocationContent) {
-            // Время шаринга локации вышло или чувак сам перестал шарить локацию
             transaction {
                 driver.state = DriverState.STARTED
                 driver.currentLocationLat = null
                 driver.currentLocationLon = null
             }
 
-            reply(it, "You stopped sharing your location, we're not looking for passengers for you any more. " +
-                    "If you'd like to start as a taxi driver again, please, send me your live location.")
+            reply(it, "Hello, ${privateChat.firstName} ${privateChat.lastName}! " +
+                    "To start as a taxi driver, please, send me your live location. " +
+                    "If you'd like to stop waiting for passengers, just stop sharing your location.")
         }
-    }
 
-//    onContentMessage {
-//        getOrCreateDriver(it.chat.id.chatId, this, it) ?: return@onContentMessage
-//        println(it.content.toString())
-//        if (it.content.toString() == "/start") {
-//            return@onContentMessage
+        context.onStaticLocation {
+            getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onStaticLocation
+            reply(it, "Please, use Live Location sharing!")
+        }
+
+        context.onLiveLocation {
+            val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onLiveLocation
+            if (driver.state !in listOf(DriverState.WAIT_FOR_ORDER, DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
+                transaction {
+                    driver.state = DriverState.WAIT_FOR_ORDER
+                }
+            }
+            transaction {
+                driver.currentLocationLat = it.content.location.latitude
+                driver.currentLocationLon = it.content.location.longitude
+            }
+            reply(it, "Thank you for sharing your location! We're looking for the passengers for you. " +
+                    "If you'd like to stop waiting for passengers, just stop sharing your location.")
+        }
+
+        context.onEditedLocation {
+            val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onEditedLocation
+            if (driver.state !in listOf(DriverState.WAIT_FOR_ORDER, DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
+                transaction {
+                    driver.state = DriverState.WAIT_FOR_ORDER
+                }
+            }
+            transaction {
+                driver.currentLocationLat = it.content.location.latitude
+                driver.currentLocationLon = it.content.location.longitude
+            }
+
+            val livePeriod = DateTimeSpan(seconds = it.content.location.liveLocationOrThrow().livePeriod - 30)
+            val endDate = it.date + livePeriod
+            if (endDate >= (it.editDate ?: endDate) || it.content is StaticLocationContent) {
+                // Время шаринга локации вышло или чувак сам перестал шарить локацию
+                transaction {
+                    driver.state = DriverState.STARTED
+                    driver.currentLocationLat = null
+                    driver.currentLocationLon = null
+                }
+
+                reply(it, "You stopped sharing your location, we're not looking for passengers for you any more. " +
+                        "If you'd like to start as a taxi driver again, please, send me your live location.")
+            }
+        }
+
+//        context.onContentMessage {
+//            clientBot.testFun()
+//    //        getOrCreateDriver(it.chat.id.chatId, this, it) ?: return@onContentMessage
+//    //        println(it.content.toString())
+//    //        if (it.content.toString() == "/start") {
+//    //            return@onContentMessage
+//    //        }
+//    //        reply(it, "Thank you!")
 //        }
-//        reply(it, "Thank you!")
-//    }
+    }
 }
 
 suspend fun addDriver(chatId_: Long, state_: DriverState): Driver {

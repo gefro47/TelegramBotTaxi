@@ -1,7 +1,9 @@
-import clientlogic.clientBot
+import clientlogic.ClientBotLogic
+import clientlogic.Clients
 import database.Drivers
+import dev.inmo.tgbotapi.extensions.api.bot.getMe
 import dev.inmo.tgbotapi.extensions.behaviour_builder.telegramBotWithBehaviourAndLongPolling
-import driverlogic.driverBot
+import driverlogic.DriverBot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -15,16 +17,23 @@ suspend fun main(args: Array<String>) {
     runBlocking {
         transaction {
             SchemaUtils.create(Drivers)
+            SchemaUtils.create(Clients)
         }
     }
 
+    val clientBot = ClientBotLogic()
     telegramBotWithBehaviourAndLongPolling(Hack_Taxi_Client_Bot, CoroutineScope(Dispatchers.IO)) {
         println(getMe())
-        clientBot()
-    }.second.join()
+        clientBot.context = this
+        clientBot.clientBot()
+    }
 
-//    telegramBotWithBehaviourAndLongPolling(Hack_Taxi_Drivers_Bot, CoroutineScope(Dispatchers.Default)) {
-//        driverBot()
-//    }.second.join()
+    val driverBot = DriverBot()
+    driverBot.clientBot = clientBot
+    clientBot.driverBot = driverBot
+    telegramBotWithBehaviourAndLongPolling(Hack_Taxi_Drivers_Bot, CoroutineScope(Dispatchers.Default)) {
+        driverBot.context = this
+        driverBot.driverBot()
+    }.second.join()
 
 }

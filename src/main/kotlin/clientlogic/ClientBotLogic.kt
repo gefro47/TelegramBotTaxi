@@ -21,6 +21,7 @@ import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.TextContent
 import dev.inmo.tgbotapi.utils.regular
 import dev.inmo.tgbotapi.utils.row
+import driverlogic.DriverBot
 import driverlogic.DriverState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,51 +31,55 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jetbrains.exposed.sql.transactions.transaction
 import retrofit.RestApiService
 
-suspend fun BehaviourContext.clientBot() {
+class ClientBotLogic {
+    lateinit var context: BehaviourContext
+    lateinit var driverBot: DriverBot
 
-    onCommand("start") {
-        val client = getClient(it.chat.id.chatId)
-        if (client == null){
-            addClient(
-                it.chat.id.chatId,
-                _dialogState = StateOfClient.StateStart
-            )
-            send(
-                it.chat.id,
-                "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
-            )
-        }else{
-            when(client.dialogState){
-                StateOfClient.StateStart -> {
-                    send(
-                        it.chat.id,
-                        "Send your location for start."
-                    )
-                }
-                StateOfClient.StateInTrip -> {
-                    send(
-                        it.chat.id,
-                        "Wait when trip is end."
-                    )
-                }
-                else -> {
-                    send(
-                        chatId = it.chat.id,
-                        text = "Reset current process?",
-                        replyMarkup = inlineKeyboard {
-                            row {
-                                dataButton("Decline", "reset_decline")
-                                dataButton("Accept", "reset_accept")
+    suspend fun clientBot() {
+
+        context.onCommand("start") {
+            val client = getClient(it.chat.id.chatId)
+            if (client == null) {
+                addClient(
+                    it.chat.id.chatId,
+                    _dialogState = StateOfClient.StateStart
+                )
+                send(
+                    it.chat.id,
+                    "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
+                )
+            } else {
+                when (client.dialogState) {
+                    StateOfClient.StateStart -> {
+                        send(
+                            it.chat.id,
+                            "Send your location for start."
+                        )
+                    }
+                    StateOfClient.StateInTrip -> {
+                        send(
+                            it.chat.id,
+                            "Wait when trip is end."
+                        )
+                    }
+                    else -> {
+                        send(
+                            chatId = it.chat.id,
+                            text = "Reset current process?",
+                            replyMarkup = inlineKeyboard {
+                                row {
+                                    dataButton("Decline", "reset_decline")
+                                    dataButton("Accept", "reset_accept")
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
+
             }
-
         }
-    }
 
-//    onCommand("getInfo"){
+//    context.onCommand("getInfo"){
 //        val client = getClient(it.chat.id.chatId)
 //        if (client != null){
 //            transaction {
@@ -83,144 +88,156 @@ suspend fun BehaviourContext.clientBot() {
 //        }
 //    }
 
-    onMessageDataCallbackQuery {
-        val answer = it.data
-        val client = getClient(it.message.chat.id.chatId)
+        context.onMessageDataCallbackQuery {
+            val answer = it.data
+            val client = getClient(it.message.chat.id.chatId)
 
-        if (client != null){
-            when (answer){
-                "decline" -> {
-                    edit(
-                        it.message.withContent<TextContent>() ?: it.let {
-                            answer(it, "Unsupported message type :(")
-                            return@onMessageDataCallbackQuery
+            if (client != null) {
+                when (answer) {
+                    "decline" -> {
+                        edit(
+                            it.message.withContent<TextContent>() ?: it.let {
+                                answer(it, "Unsupported message type :(")
+                                return@onMessageDataCallbackQuery
+                            }
+                        ) {
+                            regular("Wait please")
                         }
-                    ) {
-                        regular("Wait please")
+                        println("decline")
                     }
-                    println("decline")
-                }
-                "accept" -> {
-                    edit(
-                        it.message.withContent<TextContent>() ?: it.let {
-                            answer(it, "Unsupported message type :(")
-                            return@onMessageDataCallbackQuery
+                    "accept" -> {
+                        edit(
+                            it.message.withContent<TextContent>() ?: it.let {
+                                answer(it, "Unsupported message type :(")
+                                return@onMessageDataCallbackQuery
+                            }
+                        ) {
+                            regular("Wait please")
                         }
-                    ) {
-                        regular("Wait please")
+                        println("accept")
                     }
-                    println("accept")
-                }
-                "reset_accept" -> {
-                    edit(
-                        it.message.withContent<TextContent>() ?: it.let {
-                            answer(it, "Unsupported message type :(")
-                            return@onMessageDataCallbackQuery
+                    "reset_accept" -> {
+                        edit(
+                            it.message.withContent<TextContent>() ?: it.let {
+                                answer(it, "Unsupported message type :(")
+                                return@onMessageDataCallbackQuery
+                            }
+                        ) {
+                            regular("Send your location for start.")
                         }
-                    ) {
-                        regular("Send your location for start.")
+                        resetClient(client)
+                        println("accept")
                     }
-                    resetClient(client)
-                    println("accept")
-                }
-                "reset_decline" -> {
-                    edit(
-                        it.message.withContent<TextContent>() ?: it.let {
-                            answer(it, "Unsupported message type :(")
-                            return@onMessageDataCallbackQuery
+                    "reset_decline" -> {
+                        edit(
+                            it.message.withContent<TextContent>() ?: it.let {
+                                answer(it, "Unsupported message type :(")
+                                return@onMessageDataCallbackQuery
+                            }
+                        ) {
+                            regular("Ok, fine!")
                         }
-                    ) {
-                        regular("Ok, fine!")
+                        println("decline")
                     }
-                    println("decline")
-                }
-                "order_decline" -> {
-                    edit(
-                        it.message.withContent<TextContent>() ?: it.let {
-                            answer(it, "Unsupported message type :(")
-                            return@onMessageDataCallbackQuery
+                    "order_decline" -> {
+                        edit(
+                            it.message.withContent<TextContent>() ?: it.let {
+                                answer(it, "Unsupported message type :(")
+                                return@onMessageDataCallbackQuery
+                            }
+                        ) {
+                            regular("Send your location for start.")
                         }
-                    ) {
-                        regular("Send your location for start.")
+                        resetClient(client)
+                        println("decline")
                     }
-                    resetClient(client)
-                    println("decline")
-                }
-                "order_accept" -> {
-                    edit(
-                        it.message.withContent<TextContent>() ?: it.let {
-                            answer(it, "Unsupported message type :(")
-                            return@onMessageDataCallbackQuery
+                    "order_accept" -> {
+                        edit(
+                            it.message.withContent<TextContent>() ?: it.let {
+                                answer(it, "Unsupported message type :(")
+                                return@onMessageDataCallbackQuery
+                            }
+                        ) {
+                            regular("Wait your driver.")
                         }
-                    ) {
-                        regular("Wait your driver.")
+                        transaction {
+                            client.dialogState = StateOfClient.StateWaitDriver
+                        }
+                        println("accept")
                     }
-                    transaction {
-                        client.dialogState = StateOfClient.StateWaitDriver
-                    }
-                    println("accept")
                 }
+            } else {
+
             }
-        }else{
 
         }
 
-    }
+        context.onLocation {
+            val client = getClient(it.chat.id.chatId)
+            if (client != null) {
+                it.content.location.ifLiveLocation { location ->
+                    send(
+                        it.chat.id,
+                        "Nope, only static location!"
+                    )
+                }
 
-    onLocation {
-        val client = getClient(it.chat.id.chatId)
-        if (client != null) {
-            it.content.location.ifLiveLocation { location ->
-                send(
-                    it.chat.id,
-                    "Nope, only static location!"
-                )
-            }
+                it.content.location.ifStaticLocation { location ->
 
-            it.content.location.ifStaticLocation { location ->
+                    println(location.latitude)
+                    when (client.dialogState) {
+                        StateOfClient.StateFirstGeo -> {
+                            transaction {
+                                client.dialogState = StateOfClient.StateSecondGeo
+                                client.endLocationLat = it.content.location.latitude
+                                client.endLocationLon = it.content.location.longitude
+                            }
 
-                println(location.latitude)
-                when (client.dialogState) {
-                    StateOfClient.StateFirstGeo -> {
-                        transaction{
-                            client.dialogState = StateOfClient.StateSecondGeo
-                            client.endLocationLat = it.content.location.latitude
-                            client.endLocationLon = it.content.location.longitude
-                        }
-
-                        val clientUpdated = getClient(it.chat.id.chatId)
-                        if (clientUpdated != null){
-                            if (
-                                clientUpdated.startLocationLon != null &&
-                                clientUpdated.startLocationLat != null &&
-                                clientUpdated.endLocationLat != null &&
-                                clientUpdated.endLocationLon != null
-                            ){
-                                RestApiService().getInfo(
-                                    "${clientUpdated.startLocationLon},${clientUpdated.startLocationLat}",
-                                    "${clientUpdated.endLocationLon},${clientUpdated.endLocationLat}"
-                                ) { response ->
-                                    if (response != null) {
-                                        if (response.features.isNotEmpty()) {
-                                            launch(Dispatchers.IO) {
-                                                send(
-                                                    it.chat.id,
-                                                    """
+                            val clientUpdated = getClient(it.chat.id.chatId)
+                            if (clientUpdated != null) {
+                                if (
+                                    clientUpdated.startLocationLon != null &&
+                                    clientUpdated.startLocationLat != null &&
+                                    clientUpdated.endLocationLat != null &&
+                                    clientUpdated.endLocationLon != null
+                                ) {
+                                    RestApiService().getInfo(
+                                        "${clientUpdated.startLocationLon},${clientUpdated.startLocationLat}",
+                                        "${clientUpdated.endLocationLon},${clientUpdated.endLocationLat}"
+                                    ) { response ->
+                                        if (response != null) {
+                                            if (response.features.isNotEmpty()) {
+                                                launch(Dispatchers.IO) {
+                                                    send(
+                                                        it.chat.id,
+                                                        """
                                                         ⏱️ Driver :
                                                         💶 Trip amount: ${calculateTrip(response.features.first().properties.summary.distance)} €
                                                     """.trimIndent(),
-                                                    replyMarkup = inlineKeyboard {
-                                                        row {
-                                                            dataButton("Decline", "order_decline")
-                                                            dataButton("Accept", "order_accept")
+                                                        replyMarkup = inlineKeyboard {
+                                                            row {
+                                                                dataButton("Decline", "order_decline")
+                                                                dataButton("Accept", "order_accept")
+                                                            }
                                                         }
+                                                    )
+                                                    transaction {
+                                                        client.price =
+                                                            calculateTrip(response.features.first().properties.summary.distance)
+                                                        client.distance =
+                                                            response.features.first().properties.summary.distance
                                                     }
-                                                )
-                                                transaction {
-                                                    client.price = calculateTrip(response.features.first().properties.summary.distance)
-                                                    client.distance = response.features.first().properties.summary.distance
+                                                }
+                                            } else {
+                                                launch(Dispatchers.IO) {
+                                                    resetClient(client)
+                                                    send(
+                                                        it.chat.id,
+                                                        "Oops, something went wrong! Start again."
+                                                    )
                                                 }
                                             }
+                                            println(it.toString())
                                         } else {
                                             launch(Dispatchers.IO) {
                                                 resetClient(client)
@@ -230,34 +247,24 @@ suspend fun BehaviourContext.clientBot() {
                                                 )
                                             }
                                         }
-                                        println(it.toString())
-                                    } else {
-                                        launch(Dispatchers.IO) {
-                                            resetClient(client)
-                                            send(
-                                                it.chat.id,
-                                                "Oops, something went wrong! Start again."
-                                            )
-                                        }
                                     }
+                                } else {
+                                    resetClient(client)
+                                    send(
+                                        it.chat.id,
+                                        "Oops, something went wrong! Start again."
+                                    )
                                 }
-                            }else{
-                                resetClient(client)
+                            } else {
+                                addClient(
+                                    it.chat.id.chatId,
+                                    _dialogState = StateOfClient.StateStart
+                                )
                                 send(
                                     it.chat.id,
-                                    "Oops, something went wrong! Start again."
+                                    "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
                                 )
                             }
-                        }else{
-                            addClient(
-                                it.chat.id.chatId,
-                                _dialogState = StateOfClient.StateStart
-                            )
-                            send(
-                                it.chat.id,
-                                "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
-                            )
-                        }
 
 //                        send(
 //                            it.chat.id,
@@ -267,37 +274,37 @@ suspend fun BehaviourContext.clientBot() {
 //                            it.chat.id,
 //                            "Wait calculate"
 //                        )
-                    }
-                    StateOfClient.StateStart -> {
-                        transaction{
-                            client.dialogState = StateOfClient.StateFirstGeo
-                            client.startLocationLat = it.content.location.latitude
-                            client.startLocationLon = it.content.location.longitude
                         }
-                        send(
-                            it.chat.id,
-                            "Send endpoint location"
-                        )
+                        StateOfClient.StateStart -> {
+                            transaction {
+                                client.dialogState = StateOfClient.StateFirstGeo
+                                client.startLocationLat = it.content.location.latitude
+                                client.startLocationLon = it.content.location.longitude
+                            }
+                            send(
+                                it.chat.id,
+                                "Send endpoint location"
+                            )
 
-                    }
-                    else -> {
-                        send(
-                            it.chat.id,
-                            "Please, over prev step."
-                        )
+                        }
+                        else -> {
+                            send(
+                                it.chat.id,
+                                "Please, over prev step."
+                            )
+                        }
                     }
                 }
+            } else {
+                addClient(
+                    it.chat.id.chatId,
+                    _dialogState = StateOfClient.StateStart
+                )
+                send(
+                    it.chat.id,
+                    "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
+                )
             }
-        }else{
-            addClient(
-                it.chat.id.chatId,
-                _dialogState = StateOfClient.StateStart
-            )
-            send(
-                it.chat.id,
-                "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
-            )
-        }
 
 //        trip = Trip(
 //            startLocation = Location(
@@ -309,6 +316,7 @@ suspend fun BehaviourContext.clientBot() {
 //                len = it.content.location.longitude
 //            )
 //        )
+        }
     }
 }
 
