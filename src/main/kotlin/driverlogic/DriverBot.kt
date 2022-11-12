@@ -1,11 +1,12 @@
 package driverlogic
 
 import clientlogic.ClientBotLogic
+import clientlogic.getClient
 import com.soywiz.klock.DateTimeSpan
-import database.Driver
-import database.Drivers
+import database.*
 import dev.inmo.tgbotapi.extensions.api.bot.getMe
 import dev.inmo.tgbotapi.extensions.api.send.reply
+import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onEditedLocation
@@ -13,6 +14,7 @@ import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onLiveLo
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onStaticLocation
 import dev.inmo.tgbotapi.extensions.utils.liveLocationOrThrow
 import dev.inmo.tgbotapi.extensions.utils.privateChatOrNull
+import dev.inmo.tgbotapi.types.ChatId
 import dev.inmo.tgbotapi.types.chat.PrivateChat
 import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
 import dev.inmo.tgbotapi.types.message.content.MessageContent
@@ -102,14 +104,21 @@ class DriverBot {
 //    //        reply(it, "Thank you!")
 //        }
     }
-}
 
-suspend fun addDriver(chatId_: Long, state_: DriverState): Driver {
-    return transaction {
-        return@transaction Driver.new {
-            chatId = chatId_
-            state = state_
+    suspend fun findDriver(clientId: Long) {
+        val client = getClient(clientId)
+        val drivers = getAvailableDrivers()
+        for (driver in drivers) {
+            if (true) {   // todo: driver near passenger: 10 km
+                // отправить локации и сумму, предложить поездку
+                context.send(
+                    chatId = ChatId(driver.chatId),
+                    text = ""
+                )
+            }
+            // todo: водитель не найден
         }
+        addOrder(clientId, 0)
     }
 }
 
