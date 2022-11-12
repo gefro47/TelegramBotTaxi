@@ -1,5 +1,6 @@
 package driverlogic
 
+import clientlogic.Client
 import clientlogic.ClientBotLogic
 import clientlogic.getClient
 import com.soywiz.klock.DateTimeSpan
@@ -8,18 +9,19 @@ import dev.inmo.tgbotapi.extensions.api.bot.getMe
 import dev.inmo.tgbotapi.extensions.api.send.reply
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
-import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
-import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onEditedLocation
-import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onLiveLocation
-import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onStaticLocation
+import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.*
 import dev.inmo.tgbotapi.extensions.utils.liveLocationOrThrow
 import dev.inmo.tgbotapi.extensions.utils.privateChatOrNull
+import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.types.ChatId
+import dev.inmo.tgbotapi.types.buttons.inline.dataInlineButton
 import dev.inmo.tgbotapi.types.chat.PrivateChat
+import dev.inmo.tgbotapi.types.location.StaticLocation
 import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
 import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.StaticLocationContent
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.util.UUID
 
 class DriverBot {
     lateinit var context: BehaviourContext
@@ -94,6 +96,10 @@ class DriverBot {
             }
         }
 
+        context.onMessageDataCallbackQuery {
+
+        }
+
 //        context.onContentMessage {
 //            clientBot.testFun()
 //    //        getOrCreateDriver(it.chat.id.chatId, this, it) ?: return@onContentMessage
@@ -106,19 +112,25 @@ class DriverBot {
     }
 
     suspend fun findDriver(clientId: Long) {
-        val client = getClient(clientId)
+        val client = getClient(clientId) ?: return
+        if (client.startLocationLon == null || client.startLocationLat == null
+                || client.endLocationLon == null || client.endLocationLat == null
+                || client.distance == null || client.price == null) {
+            println("Something in client $client is null!!!")
+            return
+        }
+        val orderUuid = UUID.randomUUID()
+
         val drivers = getAvailableDrivers()
+        val driverChatIds = arrayListOf<Long>()
         for (driver in drivers) {
             if (true) {   // todo: driver near passenger: 10 km
-                // отправить локации и сумму, предложить поездку
-                context.send(
-                    chatId = ChatId(driver.chatId),
-                    text = ""
-                )
+                driverChatIds.add(driver.chatId)
             }
-            // todo: водитель не найден
         }
-        addOrder(clientId, 0)
+        // todo: водитель не найден
+        addOrder(orderUuid, clientId, driverChatIds.size)
+        context.sendOrderToDrivers(driverChatIds, client, orderUuid)
     }
 }
 
@@ -145,4 +157,34 @@ suspend fun checkPrivateChat(context: BehaviourContext, message: CommonMessage<M
         context.reply(message, "Only using in private chats is allowed!")
     }
     return privateChat
+}
+
+suspend fun BehaviourContext.sendOrderToDrivers(drivers: List<Long>, client: Client, orderUuid: UUID) {
+    for (driverChatId in drivers) {
+        send(
+            chatId = ChatId(driverChatId),
+            text = "New order! Start point:"
+        )
+        send(
+            chatId = ChatId(driverChatId),
+            location = StaticLocation(longitude = client.startLocationLon!!, latitude = client.startLocationLat!!),
+        )
+        send(
+            chatId = ChatId(driverChatId),
+            text = "End point:"
+        )
+        send(
+            chatId = ChatId(driverChatId),
+            location = StaticLocation(longitude = client.endLocationLon!!, latitude = client.endLocationLat!!),
+        )
+        send(
+            chatId = ChatId(driverChatId),
+            text = "Order distance is ${client.distance!!}. Order price is ${client.price!! * 0.95}. " +
+                    "Do you want to take this order?",
+            replyMarkup = inlineKeyboard {
+                dataInlineButton("Accept", "$orderUuid accept")
+                dataInlineButton("Decline", "$orderUuid decline")
+            }
+        )
+    }
 }
