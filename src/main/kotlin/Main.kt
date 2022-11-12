@@ -10,12 +10,12 @@ suspend fun main(args: Array<String>) {
 
     telegramBotWithBehaviourAndLongPolling(Hack_Taxi_Client_Bot, CoroutineScope(Dispatchers.IO)) {
         println(getMe())
-
-        clientBot(this)
+        clientBot()
 //        Todo logic
-    }
-    telegramBotWithBehaviourAndLongPolling(Hack_Taxi_Drivers_Bot, CoroutineScope(Dispatchers.Default)) {
-        driverBot(this)
     }.second.join()
+
+//    telegramBotWithBehaviourAndLongPolling(Hack_Taxi_Drivers_Bot, CoroutineScope(Dispatchers.Default)) {
+//        driverBot(this)
+//    }.second.join()
 
 }

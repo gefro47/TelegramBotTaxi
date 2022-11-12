@@ -14,6 +14,9 @@ repositories {
 
 dependencies {
     implementation("dev.inmo:tgbotapi:3.3.0")
+    implementation ("com.squareup.retrofit2:retrofit:$2.0.9")
+    implementation ("com.squareup.retrofit2:converter-moshi:$2.0.9")
+    implementation ("com.squareup.okhttp3:okhttp:$4.0.9")
     testImplementation(kotlin("test"))
 }
 
