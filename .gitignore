@@ -1,4 +1,4 @@
 .idea
 .gradle
 gradle
-*/TelegramTokens.kt
+*\TelegramTokens.kt
