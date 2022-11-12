@@ -1,6 +1,7 @@
 .idea
 .gradle
 gradle
+out
 TelegramTokens.kt
 gradlew
 gradlew.bat
