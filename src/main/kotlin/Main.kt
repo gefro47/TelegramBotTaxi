@@ -1,19 +1,25 @@
 import clientlogic.clientBot
+import database.Driver
 import database.Drivers
 import dev.inmo.tgbotapi.extensions.api.bot.getMe
 import dev.inmo.tgbotapi.extensions.behaviour_builder.telegramBotWithBehaviourAndLongPolling
+import driverlogic.DriverState
 import driverlogic.driverBot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 
 
 suspend fun main(args: Array<String>) {
-    Database.connect("jdbc:h2:mem:test", driver = "org.h2.Driver", user = "root", password = "")
-    transaction {
-        SchemaUtils.create(Drivers)
+    Database.connect("jdbc:h2:file:${DATABASE_PATH}", driver = "org.h2.Driver", user = "root", password = "")
+    runBlocking {
+        transaction {
+            SchemaUtils.create(Drivers)
+        }
     }
 
     telegramBotWithBehaviourAndLongPolling(Hack_Taxi_Client_Bot, CoroutineScope(Dispatchers.IO)) {

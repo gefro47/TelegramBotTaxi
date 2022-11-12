@@ -26,23 +26,23 @@ suspend fun BehaviourContext.driverBot() {
     }
 
     onStaticLocation {
-        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>)?.let { return@onStaticLocation }
+        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onStaticLocation
         reply(it, "Please, use Live Location sharing!")
     }
 
     onLiveLocation {
-        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>)?.let { return@onLiveLocation }
+        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onLiveLocation
         reply(it, "Save: ${it.content.location.longitude}, ${it.content.location.latitude}")
     }
 
     onEditedLocation {
-        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>)?.let { return@onEditedLocation }
+        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onEditedLocation
         reply(it, "Save: ${it.content.location.longitude}, ${it.content.location.latitude}")
 //        sleep(5000)
     }
 
     onContentMessage {
-        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>)?.let { return@onContentMessage }
+        checkDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onContentMessage
         println(it.content.toString())
         if (it.content.toString() == "/start") {
             return@onContentMessage
