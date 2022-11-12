@@ -2,3 +2,5 @@
 .gradle
 gradle
 TelegramTokens.kt
+gradlew
+gradlew.bat
