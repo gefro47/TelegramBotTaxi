@@ -3,11 +3,20 @@ package clientlogic
 import data.Location
 import data.TelegramUser
 import data.Trip
+import dev.inmo.tgbotapi.extensions.api.answers.answer
+import dev.inmo.tgbotapi.extensions.api.edit.edit
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onLocation
+import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onMessageDataCallbackQuery
 import dev.inmo.tgbotapi.extensions.utils.*
+import dev.inmo.tgbotapi.extensions.utils.types.buttons.InlineKeyboardBuilder
+import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
+import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
+import dev.inmo.tgbotapi.types.message.content.TextContent
+import dev.inmo.tgbotapi.utils.regular
+import dev.inmo.tgbotapi.utils.row
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.RequestBody
@@ -15,7 +24,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit.RestApiService
 
-suspend fun BehaviourContext.clientBot(){
+suspend fun BehaviourContext.clientBot() {
     var client: ClientUser
 
     var trip: Trip
@@ -40,16 +49,56 @@ suspend fun BehaviourContext.clientBot(){
         println(client.toString())
     }
 
-//    onCommand("getInfo"){
-//        val api = RestApiService()
-//        api.getInfo("8.681495,49.41461","8.687872,49.420318"){
-//            if (it != null) {
-//                println(it.toString())
-//            } else {
-//                println("Error registering new user")
+    onCommand("getInfo"){
+        send(
+            chatId = it.chat.id,
+            text = "LLLLLL",
+            replyMarkup = inlineKeyboard {
+                row {
+                    dataButton("Decline", "decline")
+                    dataButton("Accept", "accept")
+                }
+            }
+        )
+
+    }
+    onMessageDataCallbackQuery {
+        val answer = it.data
+
+        when (answer){
+            "decline" -> {
+                edit(
+                    it.message.withContent<TextContent>() ?: it.let {
+                        answer(it, "Unsupported message type :(")
+                        return@onMessageDataCallbackQuery
+                    }
+                ) {
+                    regular("Wait please")
+                }
+                println("decline")
+            }
+            "accept" -> {
+                edit(
+                    it.message.withContent<TextContent>() ?: it.let {
+                        answer(it, "Unsupported message type :(")
+                        return@onMessageDataCallbackQuery
+                    }
+                ) {
+                    regular("Wait please")
+                }
+                println("accept")
+            }
+        }
+
+//        edit(
+//            it.message.withContent<TextContent>() ?: it.let {
+//                answer(it, "Unsupported message type :(")
+//                return@onMessageDataCallbackQuery
 //            }
+//        ) {
+//            regular("Wait please")
 //        }
-//    }
+    }
 
     onLocation {
         client = ClientUser(
@@ -80,22 +129,23 @@ suspend fun BehaviourContext.clientBot(){
         it.content.location.ifStaticLocation { location ->
 
             println(location.latitude)
-            when (client.dialogState){
+            when (client.dialogState) {
                 StateOfClient.StateFirstGeo -> {
                     send(
                         it.chat.id,
                         "Wait calculate"
                     )
-                    RestApiService().getInfo("${client.currentTrip!!.startLocation.len},${client.currentTrip!!.startLocation.lat}","${client.currentTrip!!.endLocation.len},${client.currentTrip!!.endLocation.lat}"){ response ->
+                    RestApiService().getInfo("18.843019,42.285626","18.861267,42.284055") { response ->
+//                        RestApiService().getInfo("${client.currentTrip!!.startLocation.len},${client.currentTrip!!.startLocation.lat}","${client.currentTrip!!.endLocation.len},${client.currentTrip!!.endLocation.lat}"){ response ->
                         if (response != null) {
-                            if (response.features.isNotEmpty()){
+                            if (response.features.isNotEmpty()) {
                                 launch(Dispatchers.IO) {
                                     send(
                                         it.chat.id,
                                         response.features.first().properties.summary.distance.toString()
                                     )
                                 }
-                            }else{
+                            } else {
                                 launch(Dispatchers.IO) {
                                     send(
                                         it.chat.id,

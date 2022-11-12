@@ -13,6 +13,7 @@ class RestApiService {
         retrofit.getInfo(apikey = UrlMaps.key, start, end).enqueue(
             object : Callback<ResponseMaps> {
                 override fun onFailure(call: Call<ResponseMaps>, t: Throwable) {
+                    println(t.toString())
                     onResult(null)
                 }
                 override fun onResponse(call: Call<ResponseMaps>, response: Response<ResponseMaps>) {
@@ -21,5 +22,6 @@ class RestApiService {
                 }
             }
         )
+        println(retrofit.getInfo(apikey = UrlMaps.key, start, end).request().toString())
     }
 }

@@ -6,7 +6,7 @@ data class Segment(
     @SerializedName("distance")
     val distance: Double,
     @SerializedName("duration")
-    val duration: Int,
+    val duration: Double,
     @SerializedName("steps")
     val steps: List<Step>
 )

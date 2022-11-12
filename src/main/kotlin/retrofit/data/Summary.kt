@@ -6,5 +6,5 @@ data class Summary(
     @SerializedName("distance")
     val distance: Double,
     @SerializedName("duration")
-    val duration: Int
+    val duration: Double
 )
