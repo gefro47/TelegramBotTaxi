@@ -12,6 +12,7 @@ repositories {
     mavenCentral()
 }
 
+val exposedVersion: String by project
 dependencies {
     implementation("dev.inmo:tgbotapi:3.3.0")
     implementation ("com.squareup.retrofit2:retrofit:2.9.0")
@@ -21,6 +22,11 @@ dependencies {
 //    implementation ("com.squareup.okhttp3:okhttp:$4.0.9")
 
     implementation ("com.squareup.okhttp3:okhttp:5.0.0-alpha.2")
+
+    implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
+    implementation("com.h2database:h2:2.1.214")
     testImplementation(kotlin("test"))
 }
 
