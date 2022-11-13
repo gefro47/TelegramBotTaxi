@@ -3,22 +3,31 @@ package clientlogic
 import data.Location
 import data.TelegramUser
 import data.Trip
-import database.Driver
+import database.*
 import dev.inmo.tgbotapi.extensions.api.answers.answer
 import dev.inmo.tgbotapi.extensions.api.edit.edit
+import dev.inmo.tgbotapi.extensions.api.edit.location.live.editLiveLocation
 import dev.inmo.tgbotapi.extensions.api.send.send
+import dev.inmo.tgbotapi.extensions.api.send.sendLiveLocation
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onContentMessage
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onLocation
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onMessageDataCallbackQuery
 import dev.inmo.tgbotapi.extensions.utils.*
+import dev.inmo.tgbotapi.extensions.utils.extensions.raw.text
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.InlineKeyboardBuilder
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
+import dev.inmo.tgbotapi.types.ChatId
+import dev.inmo.tgbotapi.types.MessageId
+import dev.inmo.tgbotapi.types.location.LiveLocation
 import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
+import dev.inmo.tgbotapi.types.message.content.LiveLocationContent
 import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.TextContent
+import dev.inmo.tgbotapi.types.message.textsources.regular
+import dev.inmo.tgbotapi.utils.RiskFeature
 import dev.inmo.tgbotapi.utils.regular
 import dev.inmo.tgbotapi.utils.row
 import driverlogic.DriverBot
@@ -28,13 +37,49 @@ import kotlinx.coroutines.launch
 import okhttp3.RequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import retrofit.RestApiService
+import java.util.UUID
 
 class ClientBotLogic {
     lateinit var context: BehaviourContext
     lateinit var driverBot: DriverBot
 
+    suspend fun sendDriver(orderUUID: UUID){
+        val order = getOrder(orderUUID)
+        if (order != null){
+            val client = getClient(order.clientChatId)
+            val driver = getDriver(order.driverChatId!!)
+            if (client != null) {
+                context.edit(
+                    chatId = ChatId(order.clientChatId),
+                    messageId = order.clientMessageId,
+                    text = """
+                            💶 The cost of travel: ${client.price!!} €
+                        """.trimIndent()
+                )
+                val locationMessageId = context.sendLiveLocation(
+                    chatId = ChatId(order.clientChatId),
+                    location = LiveLocation(driver!!.currentLocationLat!!, driver.currentLocationLon!!,null, 1200),
+                    1200
+                ).messageId
+                transaction {
+                    order.locationMessageId = locationMessageId
+                }
+            }
+        }
+    }
+
+    suspend fun editLocationMessage(locationMessageId: Long, clientChatId: Long, lat: Double, lon:Double){
+        context.editLiveLocation(
+            chatId = ChatId(clientChatId),
+            messageId = locationMessageId,
+            location = LiveLocation(lat, lon,null, 1200)
+        )
+    }
+
+    @OptIn(RiskFeature::class)
     suspend fun clientBot() {
 
         context.onCommand("start") {
@@ -68,8 +113,8 @@ class ClientBotLogic {
                             text = "Reset current process?",
                             replyMarkup = inlineKeyboard {
                                 row {
-                                    dataButton("Decline", "reset_decline")
-                                    dataButton("Accept", "reset_accept")
+                                    dataButton("Decline", "decline")
+                                    dataButton("Accept", "accept")
                                 }
                             }
                         )
@@ -95,75 +140,130 @@ class ClientBotLogic {
             if (client != null) {
                 when (answer) {
                     "decline" -> {
-                        edit(
-                            it.message.withContent<TextContent>() ?: it.let {
-                                answer(it, "Unsupported message type :(")
-                                return@onMessageDataCallbackQuery
+                        when (client.dialogState) {
+                            StateOfClient.StateSecondGeo -> {
+                                println(it.message.text)
+                                edit(
+                                    message = it.message.withContent<TextContent>()!!,
+                                    text = "Declined."
+                                )
+//                                edit(
+//                                    it.message.withContent<TextContent>() ?: it.let {
+//                                        answer(it, "Unsupported message type :(")
+//                                        return@onMessageDataCallbackQuery
+//                                    }
+//                                ) {
+//                                    regular("Declined.")
+//                                }
+                                send(
+                                    it.message.chat,
+                                    "Send your location for start."
+                                )
+                                resetClient(client)
                             }
-                        ) {
-                            regular("Wait please")
+                            else -> {
+                                edit(
+                                    message = it.message.withContent<TextContent>()!!,
+                                    text = "Ok, fine!"
+                                )
+//                                edit(
+//                                    it.message.withContent<TextContent>() ?: it.let {
+//                                        answer(it, "Unsupported message type :(")
+//                                        return@onMessageDataCallbackQuery
+//                                    }
+//                                ) {
+//                                    regular("Ok, fine!")
+//                                }
+
+                            }
                         }
                         println("decline")
                     }
                     "accept" -> {
-                        edit(
-                            it.message.withContent<TextContent>() ?: it.let {
-                                answer(it, "Unsupported message type :(")
-                                return@onMessageDataCallbackQuery
+                        when (client.dialogState) {
+                            StateOfClient.StateSecondGeo -> {
+                                edit(
+                                    message = it.message.withContent<TextContent>()!!,
+                                    text = "Accepted"
+                                )
+//                                edit(
+//                                    it.message.withContent<TextContent>() ?: it.let {
+//                                        answer(it, "Unsupported message type :(")
+//                                        return@onMessageDataCallbackQuery
+//                                    }
+//                                ) {
+//                                    regular(
+//                                        "Accepted"
+//                                    )
+//                                }
+                                val messageId: Long = send(
+                                    it.message.chat,
+                                    it.message.text +
+                                            "\nSearching your driver...",
+                                    replyMarkup = inlineKeyboard {
+                                        row {
+                                            dataButton("Cancel", "cancel")
+                                        }
+                                    }
+                                ).messageId
+                                driverBot.findDriver(client.clientId, messageId)
+                                transaction {
+                                    client.dialogState = StateOfClient.StateWaitDriver
+                                }
                             }
-                        ) {
-                            regular("Wait please")
+                            else -> {
+                                edit(
+                                    message = it.message.withContent<TextContent>()!!,
+                                    text = "Send your location for start."
+                                )
+//                                edit(
+//                                    it.message.withContent<TextContent>() ?: it.let {
+//                                        answer(it, "Unsupported message type :(")
+//                                        return@onMessageDataCallbackQuery
+//                                    }
+//                                ) {
+//                                    regular("Send your location for start.")
+//                                }
+                                resetClient(client)
+                            }
                         }
                         println("accept")
                     }
-                    "reset_accept" -> {
-                        edit(
-                            it.message.withContent<TextContent>() ?: it.let {
-                                answer(it, "Unsupported message type :(")
-                                return@onMessageDataCallbackQuery
+                    "cancel" -> {
+                        val chatId = it.message.chat
+                        val order = getOrderByMessageId(it.message.messageId)
+                        if (order != null){
+                            resetClient(client)
+                            transaction {
+                                order.orderState = OrderState.CANCELED
                             }
-                        ) {
-                            regular("Send your location for start.")
+                            edit(
+                                message = it.message.withContent<TextContent>()!!,
+                                text = "Your order canceled."
+                            )
+//                            edit(
+//                                it.message.withContent<TextContent>() ?: it.let {
+//                                    answer(it, "Unsupported message type :(")
+//                                    return@onMessageDataCallbackQuery
+//                                }
+//                            ) {
+//                                regular("Your order canceled.")
+//                            }
+                            send(
+                                chatId,
+                                "Send your location for start."
+                            )
+                        }else{
+                            edit(
+                                message = it.message.withContent<TextContent>()!!,
+                                text = "Oops, something went wrong! Start again."
+                            )
+                            resetClient(client)
+//                            send(
+//                                chatId,
+//                                "Oops, something went wrong! Start again."
+//                            )
                         }
-                        resetClient(client)
-                        println("accept")
-                    }
-                    "reset_decline" -> {
-                        edit(
-                            it.message.withContent<TextContent>() ?: it.let {
-                                answer(it, "Unsupported message type :(")
-                                return@onMessageDataCallbackQuery
-                            }
-                        ) {
-                            regular("Ok, fine!")
-                        }
-                        println("decline")
-                    }
-                    "order_decline" -> {
-                        edit(
-                            it.message.withContent<TextContent>() ?: it.let {
-                                answer(it, "Unsupported message type :(")
-                                return@onMessageDataCallbackQuery
-                            }
-                        ) {
-                            regular("Send your location for start.")
-                        }
-                        resetClient(client)
-                        println("decline")
-                    }
-                    "order_accept" -> {
-                        edit(
-                            it.message.withContent<TextContent>() ?: it.let {
-                                answer(it, "Unsupported message type :(")
-                                return@onMessageDataCallbackQuery
-                            }
-                        ) {
-                            regular("Wait your driver.")
-                        }
-                        transaction {
-                            client.dialogState = StateOfClient.StateWaitDriver
-                        }
-                        println("accept")
                     }
                 }
             } else {
@@ -181,9 +281,7 @@ class ClientBotLogic {
                         "Nope, only static location!"
                     )
                 }
-
                 it.content.location.ifStaticLocation { location ->
-
                     println(location.latitude)
                     when (client.dialogState) {
                         StateOfClient.StateFirstGeo -> {
@@ -211,13 +309,12 @@ class ClientBotLogic {
                                                     send(
                                                         it.chat.id,
                                                         """
-                                                        ⏱️ Driver :
-                                                        💶 Trip amount: ${calculateTrip(response.features.first().properties.summary.distance)} €
+                                                        💶 The cost of travel: ${calculateTrip(response.features.first().properties.summary.distance)} €
                                                     """.trimIndent(),
                                                         replyMarkup = inlineKeyboard {
                                                             row {
-                                                                dataButton("Decline", "order_decline")
-                                                                dataButton("Accept", "order_accept")
+                                                                dataButton("Decline", "decline")
+                                                                dataButton("Accept", "accept")
                                                             }
                                                         }
                                                     )
@@ -265,15 +362,6 @@ class ClientBotLogic {
                                     "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
                                 )
                             }
-
-//                        send(
-//                            it.chat.id,
-//                            "Send endpoint location"
-//                        )
-//                        send(
-//                            it.chat.id,
-//                            "Wait calculate"
-//                        )
                         }
                         StateOfClient.StateStart -> {
                             transaction {
@@ -305,17 +393,6 @@ class ClientBotLogic {
                     "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
                 )
             }
-
-//        trip = Trip(
-//            startLocation = Location(
-//                lat = it.content.location.latitude,
-//                len = it.content.location.longitude
-//            ),
-//            endLocation = Location(
-//                lat = it.content.location.latitude,
-//                len = it.content.location.longitude
-//            )
-//        )
         }
     }
 }
@@ -330,7 +407,7 @@ fun addClient(
     _distance: Double? = null,
     _price: Double? = null,
     _driverId: Long? = null
-){
+) {
     transaction {
         Client.new {
             clientId = _clientId
@@ -354,13 +431,13 @@ fun getClient(
             Clients.clientId eq chatId
         }.toList()
     }
-    if (clients.isEmpty()){
+    if (clients.isEmpty()) {
         return null
     }
     return clients.first()
 }
 
-fun resetClient(client: Client): Boolean{
+fun resetClient(client: Client): Boolean {
     return try {
         transaction {
             client.dialogState = StateOfClient.StateStart
@@ -373,13 +450,19 @@ fun resetClient(client: Client): Boolean{
             client.price = null
         }
         true
-    }catch (ex: Exception){
+    } catch (ex: Exception) {
         false
     }
 }
 
-fun calculateTrip(distance: Double): Double{
+fun calculateTrip(distance: Double): Double {
     val tariff = 0.5
     println(distance)
-    return ((distance/1000)*tariff)+1
+    return ((distance / 1000) * tariff) + 1
+}
+
+fun getOrderByMessageId(messageId: Long): Order?{
+    return transaction {
+        return@transaction Order.find(Orders.clientMessageId eq messageId).firstOrNull()
+    }
 }

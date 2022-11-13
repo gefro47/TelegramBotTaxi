@@ -44,3 +44,11 @@ fun getAvailableDrivers(): List<Driver> {
         return@transaction Driver.find { Drivers.state eq DriverState.WAIT_FOR_ORDER }.toList()
     }
 }
+
+fun getDriver(chatId_: Long): Driver? {
+    return transaction {
+        return@transaction Driver.find {
+            Drivers.chatId eq chatId_
+        }.firstOrNull()
+    }
+}

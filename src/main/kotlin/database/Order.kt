@@ -22,6 +22,7 @@ object Orders : IntIdTable() {
     val driverChatId = long("driver_chat_id").nullable()
     val orderState = enumeration<OrderState>("order_state")
     val potentialDrivers = integer("potential_drivers")
+    val locationMessageId = long("location_message_id").nullable()
 }
 
 class Order(id: EntityID<Int>) : IntEntity(id) {
@@ -33,6 +34,7 @@ class Order(id: EntityID<Int>) : IntEntity(id) {
     var clientMessageId by Orders.clientMessageId
     var orderState by Orders.orderState
     var potentialDrivers by Orders.potentialDrivers
+    var locationMessageId by Orders.locationMessageId
 }
 
 suspend fun addOrder(_orderUuid: UUID, _clientChatId: Long, _clientMessageId: Long, _potentialDrivers: Int): Order {
@@ -44,6 +46,7 @@ suspend fun addOrder(_orderUuid: UUID, _clientChatId: Long, _clientMessageId: Lo
             driverChatId = null
             orderState = OrderState.SEARCHING_DRIVER
             potentialDrivers = _potentialDrivers
+            locationMessageId = null
         }
     }
 }
