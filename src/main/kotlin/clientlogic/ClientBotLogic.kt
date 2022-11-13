@@ -66,6 +66,8 @@ class ClientBotLogic {
                 ).messageId
                 transaction {
                     order.locationMessageId = locationMessageId
+                    client.dialogState = StateOfClient.StateWaitDriver
+                    client.driverId = driver.chatId
                 }
             }
         }
@@ -77,6 +79,22 @@ class ClientBotLogic {
             messageId = locationMessageId,
             location = LiveLocation(lat, lon,null, 1200)
         )
+    }
+
+    suspend fun notFoundDrivers(orderUUID: UUID){
+        val order = getOrder(orderUUID)
+        if (order != null){
+            context.send(
+                chatId = ChatId(order.clientChatId),
+                text = "Reset current process? If you accept, your rating will decrease!",
+                replyMarkup = inlineKeyboard {
+                    row {
+                        dataButton("Reset", "reset")
+                        dataButton("Repeat", "reapet")
+                    }
+                }
+            )
+        }
     }
 
     @OptIn(RiskFeature::class)
@@ -105,6 +123,18 @@ class ClientBotLogic {
                         send(
                             it.chat.id,
                             "Wait when trip is end."
+                        )
+                    }
+                    StateOfClient.StateWaitDriver -> {
+                        send(
+                            chatId = it.chat.id,
+                            text = "Reset current process? If you accept, your rating will decrease!",
+                            replyMarkup = inlineKeyboard {
+                                row {
+                                    dataButton("Decline", "decline")
+                                    dataButton("Accept", "accept")
+                                }
+                            }
                         )
                     }
                     else -> {
@@ -147,34 +177,23 @@ class ClientBotLogic {
                                     message = it.message.withContent<TextContent>()!!,
                                     text = "Declined."
                                 )
-//                                edit(
-//                                    it.message.withContent<TextContent>() ?: it.let {
-//                                        answer(it, "Unsupported message type :(")
-//                                        return@onMessageDataCallbackQuery
-//                                    }
-//                                ) {
-//                                    regular("Declined.")
-//                                }
                                 send(
                                     it.message.chat,
                                     "Send your location for start."
                                 )
                                 resetClient(client)
                             }
+                            StateOfClient.StateWaitDriver ->{
+                                edit(
+                                    message = it.message.withContent<TextContent>()!!,
+                                    text = "Ok, fine!"
+                                )
+                            }
                             else -> {
                                 edit(
                                     message = it.message.withContent<TextContent>()!!,
                                     text = "Ok, fine!"
                                 )
-//                                edit(
-//                                    it.message.withContent<TextContent>() ?: it.let {
-//                                        answer(it, "Unsupported message type :(")
-//                                        return@onMessageDataCallbackQuery
-//                                    }
-//                                ) {
-//                                    regular("Ok, fine!")
-//                                }
-
                             }
                         }
                         println("decline")
@@ -186,16 +205,6 @@ class ClientBotLogic {
                                     message = it.message.withContent<TextContent>()!!,
                                     text = "Accepted"
                                 )
-//                                edit(
-//                                    it.message.withContent<TextContent>() ?: it.let {
-//                                        answer(it, "Unsupported message type :(")
-//                                        return@onMessageDataCallbackQuery
-//                                    }
-//                                ) {
-//                                    regular(
-//                                        "Accepted"
-//                                    )
-//                                }
                                 val messageId: Long = send(
                                     it.message.chat,
                                     it.message.text +
@@ -208,22 +217,21 @@ class ClientBotLogic {
                                 ).messageId
                                 driverBot.findDriver(client.clientId, messageId)
                                 transaction {
-                                    client.dialogState = StateOfClient.StateWaitDriver
+                                    client.dialogState = StateOfClient.StateFindDriver
                                 }
+                            }
+                            StateOfClient.StateWaitDriver ->{
+                                edit(
+                                    message = it.message.withContent<TextContent>()!!,
+                                    text = "Your rating has gone down."
+                                )
+                                resetClient(client)
                             }
                             else -> {
                                 edit(
                                     message = it.message.withContent<TextContent>()!!,
                                     text = "Send your location for start."
                                 )
-//                                edit(
-//                                    it.message.withContent<TextContent>() ?: it.let {
-//                                        answer(it, "Unsupported message type :(")
-//                                        return@onMessageDataCallbackQuery
-//                                    }
-//                                ) {
-//                                    regular("Send your location for start.")
-//                                }
                                 resetClient(client)
                             }
                         }
@@ -241,14 +249,6 @@ class ClientBotLogic {
                                 message = it.message.withContent<TextContent>()!!,
                                 text = "Your order canceled."
                             )
-//                            edit(
-//                                it.message.withContent<TextContent>() ?: it.let {
-//                                    answer(it, "Unsupported message type :(")
-//                                    return@onMessageDataCallbackQuery
-//                                }
-//                            ) {
-//                                regular("Your order canceled.")
-//                            }
                             send(
                                 chatId,
                                 "Send your location for start."
@@ -263,6 +263,67 @@ class ClientBotLogic {
 //                                chatId,
 //                                "Oops, something went wrong! Start again."
 //                            )
+                        }
+                    }
+                    "reser" -> {
+                        println(it.message.text)
+                        edit(
+                            message = it.message.withContent<TextContent>()!!,
+                            text = "Declined."
+                        )
+                        send(
+                            it.message.chat,
+                            "Send your location for start."
+                        )
+                        resetClient(client)
+                    }
+                    "Reapet" -> {
+                        RestApiService().getInfo(
+                            "${client.startLocationLon},${client.startLocationLat}",
+                            "${client.endLocationLon},${client.endLocationLat}"
+                        ) { response ->
+                            if (response != null) {
+                                if (response.features.isNotEmpty()) {
+                                    launch(Dispatchers.IO) {
+                                        send(
+                                            it.message.chat.id,
+                                            """
+                                                        💶 The cost of travel: ${calculateTrip(response.features.first().properties.summary.distance)} €
+                                                    """.trimIndent(),
+                                            replyMarkup = inlineKeyboard {
+                                                row {
+                                                    dataButton("Decline", "decline")
+                                                    dataButton("Accept", "accept")
+                                                }
+                                            }
+                                        )
+                                        transaction {
+                                            client.price =
+                                                calculateTrip(response.features.first().properties.summary.distance)
+                                            client.distance =
+                                                response.features.first().properties.summary.distance
+                                            client.dialogState = StateOfClient.StateWaitCalc
+                                        }
+                                    }
+                                } else {
+                                    launch(Dispatchers.IO) {
+                                        resetClient(client)
+                                        send(
+                                            it.message.chat.id,
+                                            "Oops, something went wrong! Start again."
+                                        )
+                                    }
+                                }
+                                println(it.toString())
+                            } else {
+                                launch(Dispatchers.IO) {
+                                    resetClient(client)
+                                    send(
+                                        it.message.chat.id,
+                                        "Oops, something went wrong! Start again."
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -323,6 +384,7 @@ class ClientBotLogic {
                                                             calculateTrip(response.features.first().properties.summary.distance)
                                                         client.distance =
                                                             response.features.first().properties.summary.distance
+                                                        client.dialogState = StateOfClient.StateWaitCalc
                                                     }
                                                 }
                                             } else {
@@ -378,7 +440,7 @@ class ClientBotLogic {
                         else -> {
                             send(
                                 it.chat.id,
-                                "Please, over prev step."
+                                "Please, complete prev step."
                             )
                         }
                     }
@@ -386,11 +448,13 @@ class ClientBotLogic {
             } else {
                 addClient(
                     it.chat.id.chatId,
-                    _dialogState = StateOfClient.StateStart
+                    _dialogState = StateOfClient.StateFirstGeo,
+                    _startLocationLat = it.content.location.latitude,
+                    _startLocationLon = it.content.location.longitude
                 )
                 send(
                     it.chat.id,
-                    "Hello ${it.chat.privateChatOrNull()?.firstName ?: ""}, this is a taxi service, here you can order a taxi, send your location to get started."
+                    "Send endpoint location"
                 )
             }
         }
