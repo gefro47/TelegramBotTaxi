@@ -13,6 +13,7 @@ object Drivers : IntIdTable() {
     val state = enumeration<DriverState>("state")
     val currentLocationLat = double("current_location_lat").nullable()
     val currentLocationLon = double("current_location_lon").nullable()
+    val lastLocationUpdate = double("last_location_update").nullable()
 }
 
 class Driver(id: EntityID<Int>) : IntEntity(id) {
@@ -22,6 +23,7 @@ class Driver(id: EntityID<Int>) : IntEntity(id) {
     var state by Drivers.state
     var currentLocationLat by Drivers.currentLocationLat
     var currentLocationLon by Drivers.currentLocationLon
+    var lastLocationUpdate by Drivers.lastLocationUpdate
 
     override fun toString(): String {
         return "chatId = ${chatId}, state = ${state}, currentLocationLat = ${currentLocationLat}, currentLocationLon = ${currentLocationLon}"

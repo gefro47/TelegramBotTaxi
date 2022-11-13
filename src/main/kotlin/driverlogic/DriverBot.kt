@@ -3,14 +3,13 @@ package driverlogic
 import clientlogic.Client
 import clientlogic.ClientBotLogic
 import clientlogic.getClient
-import com.soywiz.klock.DateTimeSpan
+import com.soywiz.klock.DateTime
 import database.*
 import dev.inmo.tgbotapi.extensions.api.bot.getMe
 import dev.inmo.tgbotapi.extensions.api.send.reply
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.*
-import dev.inmo.tgbotapi.extensions.utils.liveLocationOrThrow
 import dev.inmo.tgbotapi.extensions.utils.privateChatOrNull
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.types.ChatId
@@ -18,10 +17,11 @@ import dev.inmo.tgbotapi.types.buttons.inline.dataInlineButton
 import dev.inmo.tgbotapi.types.chat.PrivateChat
 import dev.inmo.tgbotapi.types.location.StaticLocation
 import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
+import dev.inmo.tgbotapi.types.message.content.LocationContent
 import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.StaticLocationContent
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.util.UUID
+import java.util.*
 
 class DriverBot {
     lateinit var context: BehaviourContext
@@ -42,6 +42,7 @@ class DriverBot {
                 driver.state = DriverState.STARTED
                 driver.currentLocationLat = null
                 driver.currentLocationLon = null
+                driver.lastLocationUpdate = null
             }
 
             reply(it, "Hello, ${privateChat.firstName} ${privateChat.lastName}! " +
@@ -64,6 +65,7 @@ class DriverBot {
             transaction {
                 driver.currentLocationLat = it.content.location.latitude
                 driver.currentLocationLon = it.content.location.longitude
+                driver.lastLocationUpdate = it.date.unixMillis
             }
             reply(it, "Thank you for sharing your location! We're looking for the passengers for you. " +
                     "If you'd like to stop waiting for passengers, just stop sharing your location.")
@@ -79,20 +81,12 @@ class DriverBot {
             transaction {
                 driver.currentLocationLat = it.content.location.latitude
                 driver.currentLocationLon = it.content.location.longitude
+                driver.lastLocationUpdate = it.date.unixMillis
             }
 
-            val livePeriod = DateTimeSpan(seconds = it.content.location.liveLocationOrThrow().livePeriod - 30)
-            val endDate = it.date + livePeriod
-            if (endDate >= (it.editDate ?: endDate) || it.content is StaticLocationContent) {
-                // Время шаринга локации вышло или чувак сам перестал шарить локацию
-                transaction {
-                    driver.state = DriverState.STARTED
-                    driver.currentLocationLat = null
-                    driver.currentLocationLon = null
-                }
-
-                reply(it, "You stopped sharing your location, we're not looking for passengers for you any more. " +
-                        "If you'd like to start as a taxi driver again, please, send me your live location.")
+            if (it.content is StaticLocationContent) {
+                // Водитель перестал шарить локацию
+                context.driverStoppedShareLocation(driver, it)
             }
         }
 
@@ -124,11 +118,17 @@ class DriverBot {
         val drivers = getAvailableDrivers()
         val driverChatIds = arrayListOf<Long>()
         for (driver in drivers) {
+            if (driver.lastLocationUpdate!! < DateTime.now().unixMillis - 2 * 60 * 1000) {    // локация не обновлялась 2 минуты
+                context.driverStoppedShareLocation(driver)
+                continue
+            }
             if (true) {   // todo: driver near passenger: 10 km
                 driverChatIds.add(driver.chatId)
             }
         }
-        // todo: водитель не найден
+        if (driverChatIds.isEmpty()) {
+//            clientBot.driverNotFound()  todo
+        }
         addOrder(orderUuid, clientId, driverChatIds.size)
         context.sendOrderToDrivers(driverChatIds, client, orderUuid)
     }
@@ -186,5 +186,23 @@ suspend fun BehaviourContext.sendOrderToDrivers(drivers: List<Long>, client: Cli
                 dataInlineButton("Decline", "$orderUuid decline")
             }
         )
+    }
+}
+
+suspend fun BehaviourContext.driverStoppedShareLocation(driver: Driver, it: CommonMessage<LocationContent>? = null) {
+
+    transaction {
+        driver.state = DriverState.STARTED
+        driver.currentLocationLat = null
+        driver.currentLocationLon = null
+        driver.lastLocationUpdate = null
+    }
+
+    val text = "You stopped sharing your location, we're not looking for passengers for you any more. " +
+            "If you'd like to start as a taxi driver again, please, send me your live location."
+    if (it != null) {
+        reply(it, text)
+    } else {
+        send(ChatId(driver.chatId), text)
     }
 }
