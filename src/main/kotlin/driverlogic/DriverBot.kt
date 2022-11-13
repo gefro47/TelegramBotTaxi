@@ -75,13 +75,21 @@ class DriverBot {
                 driver.currentLocationLon = it.content.location.longitude
                 driver.lastLocationUpdate = it.date.unixMillis
             }
-            reply(it, "Thank you for sharing your location! We're looking for the passengers for you. " +
-                    "If you'd like to stop waiting for passengers, just stop sharing your location.")
+            if (driver.state == DriverState.WAIT_FOR_ORDER) {
+                reply(
+                    it, "Thank you for sharing your location! We're looking for the passengers for you. " +
+                            "If you'd like to stop waiting for passengers, just stop sharing your location."
+                )
+            } else if (driver.state in listOf(DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
+                reply(
+                    it, "Thank you, we're receiving your location again! Have a nice journey! =)"
+                )
+            }
         }
 
         context.onEditedLocation {
             val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onEditedLocation
-            val wasStarted = driver.state == DriverState.STARTED
+            val stateWasStarted = driver.state == DriverState.STARTED
             if (driver.state !in listOf(DriverState.WAIT_FOR_ORDER, DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
                 transaction {
                     driver.state = DriverState.WAIT_FOR_ORDER
@@ -99,28 +107,18 @@ class DriverBot {
                 return@onEditedLocation
             }
 
-            if (wasStarted) {
-                reply(it, "We're receiving your location again, thank you!")
+            if (stateWasStarted) {
+                reply(
+                    it, "Thank you for sharing your location! We're looking for the passengers for you. " +
+                            "If you'd like to stop waiting for passengers, just stop sharing your location."
+                )
             }
         }
 
         context.onMessageDataCallbackQuery {
             val values = it.data.split(" ")
-            val orderUuid = UUID.fromString(values[0])
-            val order = getOrder(orderUuid)
-            if (order == null || order.orderState != OrderState.SEARCHING_DRIVER) {
-                edit(
-                    message = it.message.withContent<TextContent>()!!,
-                    text = it.message.text!! + "\n\nUnfortunately, another driver has accepted this request earlier :( " +
-                            "We will find another order for you."
-                )
-                return@onMessageDataCallbackQuery
-            }
-
-            if (values[1] == "accept") {
-                driverAcceptsOrder(context, order, it)
-            } else {
-                driverDeclinesOrder(context, order, it)
+            if (values[0] in listOf(ButtonText.ACCEPT_ORDER.name, ButtonText.DECLINE_ORDER.name)) {
+                driverAcceptDeclineOrder(context, it, values)
             }
         }
 
@@ -164,6 +162,25 @@ class DriverBot {
         }
         addOrder(orderUuid, clientId, clientMessageId, driverChatIds.size)
         context.sendOrderToDrivers(driverChatIds, client, orderUuid)
+    }
+
+    private suspend fun driverAcceptDeclineOrder(context: BehaviourContext, it: MessageDataCallbackQuery, values: List<String>) {
+        val orderUuid = UUID.fromString(values[1])
+        val order = getOrder(orderUuid)
+        if (order == null || order.orderState != OrderState.SEARCHING_DRIVER) {
+            context.edit(
+                message = it.message.withContent<TextContent>()!!,
+                text = it.message.text!! + "\n\nUnfortunately, this order is no longer available :( " +
+                        "We will find another order for you."
+            )
+            return@driverAcceptDeclineOrder
+        }
+
+        if (values[0] == ButtonText.ACCEPT_ORDER.name) {
+            driverAcceptsOrder(context, order, it)
+        } else {
+            driverDeclinesOrder(context, order, it)
+        }
     }
 
     private suspend fun driverAcceptsOrder(context: BehaviourContext, order: Order, it: MessageDataCallbackQuery) {
@@ -258,8 +275,8 @@ suspend fun BehaviourContext.sendOrderToDrivers(drivers: List<Long>, client: Cli
                     "Do you want to take this order?",
             replyMarkup = inlineKeyboard {
                 row {
-                    dataButton("Accept", "$orderUuid accept")
-                    dataButton("Decline", "$orderUuid decline")
+                    dataButton("Accept", "${ButtonText.ACCEPT_ORDER.name} $orderUuid")
+                    dataButton("Decline", "${ButtonText.DECLINE_ORDER.name} $orderUuid")
                 }
             }
         )
@@ -268,18 +285,33 @@ suspend fun BehaviourContext.sendOrderToDrivers(drivers: List<Long>, client: Cli
 
 suspend fun BehaviourContext.driverStoppedShareLocation(driver: Driver, it: CommonMessage<LocationContent>? = null) {
 
-    transaction {
-        driver.state = DriverState.STARTED
-        driver.currentLocationLat = null
-        driver.currentLocationLon = null
-        driver.lastLocationUpdate = null
-    }
+    if (driver.state == DriverState.WAIT_FOR_ORDER) {
 
-    val text = "You stopped sharing your location, we're not looking for passengers for you any more. " +
-            "If you'd like to start as a taxi driver again, please, send me your live location."
-    if (it != null) {
-        reply(it, text)
+        transaction {
+            driver.state = DriverState.STARTED
+            driver.currentLocationLat = null
+            driver.currentLocationLon = null
+            driver.lastLocationUpdate = null
+        }
+
+        val text = "You stopped sharing your location, we're not looking for passengers for you any more. " +
+                "If you'd like to start as a taxi driver again, please, send me your live location."
+        if (it != null) {
+            reply(it, text)
+        } else {
+            send(ChatId(driver.chatId), text)
+        }
     } else {
-        send(ChatId(driver.chatId), text)
+        val text = "You stopped sharing your location during the trip! Please, start to share it again. " +
+                "You can't mark your order as completed without location sharing, even if you complete it." +
+                "You can decline your order, but your Driver Reputation will be decreased :("
+        val replyMarkup = inlineKeyboard { row {
+            dataButton("Decline the order? Attention!!!", ButtonText.DECLINE_ORDER_IN_PROGRESS.name)
+        } }
+        if (it != null) {
+            reply(it, text, replyMarkup = replyMarkup)
+        } else {
+            send(ChatId(driver.chatId), text, replyMarkup = replyMarkup)
+        }
     }
 }
