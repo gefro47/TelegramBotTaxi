@@ -97,6 +97,30 @@ class ClientBotLogic {
         }
     }
 
+    suspend fun startTrip(orderUUID: UUID){
+        val order = getOrder(orderUUID)
+        if (order != null){
+            context.send(
+                chatId = ChatId(order.clientChatId),
+                text = "Your trip is start."
+            )
+            transaction {
+                getClient(order.clientChatId)?.dialogState = StateOfClient.StateInTrip
+            }
+        }
+    }
+
+    suspend fun endTrip(orderUUID: UUID){
+        val order = getOrder(orderUUID)
+        if (order != null){
+            context.send(
+                chatId = ChatId(order.clientChatId),
+                text = "Your trip is over. If you want use our taxi again, please send your location."
+            )
+            resetClient(getClient(order.clientChatId)!!)
+        }
+    }
+
     @OptIn(RiskFeature::class)
     suspend fun clientBot() {
 
