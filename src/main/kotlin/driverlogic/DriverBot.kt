@@ -346,7 +346,7 @@ class DriverBot {
         )
         context.send(
             chatId = it.message.chat.id,
-            location = StaticLocation(longitude = client.startLocationLon!!, latitude = client.startLocationLat!!),
+            location = StaticLocation(longitude = client.endLocationLon!!, latitude = client.endLocationLat!!),
         )
     }
 
@@ -411,9 +411,11 @@ suspend fun BehaviourContext.sendOrderToDrivers(drivers: List<Long>, client: Cli
             chatId = ChatId(driverChatId),
             location = StaticLocation(longitude = client.endLocationLon!!, latitude = client.endLocationLat!!),
         )
+        val price = client.price!! * 0.95
+        val price2 = Math.round(price * 100.0) / 100.0
         send(
             chatId = ChatId(driverChatId),
-            text = "Order distance is ${client.distance!!}. Order price is ${client.price!! * 0.95}. " +
+            text = "Order distance is ${client.distance!!}. Order price is ${price2}. " +
                     "Do you want to take this order?",
             replyMarkup = inlineKeyboard {
                 row {
