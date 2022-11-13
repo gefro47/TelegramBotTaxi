@@ -1,6 +1,7 @@
 import clientlogic.ClientBotLogic
 import clientlogic.Clients
 import database.Drivers
+import database.Orders
 import dev.inmo.tgbotapi.extensions.api.bot.getMe
 import dev.inmo.tgbotapi.extensions.behaviour_builder.telegramBotWithBehaviourAndLongPolling
 import driverlogic.DriverBot
@@ -18,6 +19,7 @@ suspend fun main(args: Array<String>) {
         transaction {
             SchemaUtils.create(Drivers)
             SchemaUtils.create(Clients)
+            SchemaUtils.create(Orders)
         }
     }
 

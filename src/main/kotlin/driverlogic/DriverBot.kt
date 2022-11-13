@@ -11,15 +11,16 @@ import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.*
 import dev.inmo.tgbotapi.extensions.utils.privateChatOrNull
+import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.types.ChatId
-import dev.inmo.tgbotapi.types.buttons.inline.dataInlineButton
 import dev.inmo.tgbotapi.types.chat.PrivateChat
 import dev.inmo.tgbotapi.types.location.StaticLocation
 import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
 import dev.inmo.tgbotapi.types.message.content.LocationContent
 import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.StaticLocationContent
+import dev.inmo.tgbotapi.utils.row
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.util.*
 
@@ -73,6 +74,7 @@ class DriverBot {
 
         context.onEditedLocation {
             val driver = getOrCreateDriver(it.chat.id.chatId, this, it as CommonMessage<MessageContent>) ?: return@onEditedLocation
+            val wasStarted = driver.state == DriverState.STARTED
             if (driver.state !in listOf(DriverState.WAIT_FOR_ORDER, DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
                 transaction {
                     driver.state = DriverState.WAIT_FOR_ORDER
@@ -81,12 +83,17 @@ class DriverBot {
             transaction {
                 driver.currentLocationLat = it.content.location.latitude
                 driver.currentLocationLon = it.content.location.longitude
-                driver.lastLocationUpdate = it.date.unixMillis
+                driver.lastLocationUpdate = it.editDate!!.unixMillis
             }
 
             if (it.content is StaticLocationContent) {
                 // Водитель перестал шарить локацию
                 context.driverStoppedShareLocation(driver, it)
+                return@onEditedLocation
+            }
+
+            if (wasStarted) {
+                reply(it, "We're receiving your location again, thank you!")
             }
         }
 
@@ -116,9 +123,12 @@ class DriverBot {
         val orderUuid = UUID.randomUUID()
 
         val drivers = getAvailableDrivers()
+        val lastLocationUpdate = DateTime.now().unixMillis - 2 * 60 * 1000  // Две минуты назад.
         val driverChatIds = arrayListOf<Long>()
         for (driver in drivers) {
-            if (driver.lastLocationUpdate!! < DateTime.now().unixMillis - 2 * 60 * 1000) {    // локация не обновлялась 2 минуты
+            if (driver.lastLocationUpdate!! < lastLocationUpdate) {    // локация не обновлялась 2 минуты
+                println(driver.lastLocationUpdate!!)
+                println(DateTime.now().unixMillis - 2 * 60 * 1000)
                 context.driverStoppedShareLocation(driver)
                 continue
             }
@@ -171,7 +181,7 @@ suspend fun BehaviourContext.sendOrderToDrivers(drivers: List<Long>, client: Cli
         )
         send(
             chatId = ChatId(driverChatId),
-            text = "End point:"
+            text = "Destination point:"
         )
         send(
             chatId = ChatId(driverChatId),
@@ -182,8 +192,10 @@ suspend fun BehaviourContext.sendOrderToDrivers(drivers: List<Long>, client: Cli
             text = "Order distance is ${client.distance!!}. Order price is ${client.price!! * 0.95}. " +
                     "Do you want to take this order?",
             replyMarkup = inlineKeyboard {
-                dataInlineButton("Accept", "$orderUuid accept")
-                dataInlineButton("Decline", "$orderUuid decline")
+                row {
+                    dataButton("Accept", "$orderUuid accept")
+                    dataButton("Decline", "$orderUuid decline")
+                }
             }
         )
     }
