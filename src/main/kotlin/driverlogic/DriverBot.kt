@@ -135,7 +135,7 @@ class DriverBot {
 //        }
     }
 
-    suspend fun findDriver(clientId: Long) {
+    suspend fun findDriver(clientId: Long, clientMessageId: Long) {
         val client = getClient(clientId) ?: return
         if (client.startLocationLon == null || client.startLocationLat == null
                 || client.endLocationLon == null || client.endLocationLat == null
@@ -162,7 +162,7 @@ class DriverBot {
         if (driverChatIds.isEmpty()) {
 //            clientBot.driverNotFound()  todo
         }
-        addOrder(orderUuid, clientId, driverChatIds.size)
+        addOrder(orderUuid, clientId, clientMessageId, driverChatIds.size)
         context.sendOrderToDrivers(driverChatIds, client, orderUuid)
     }
 
