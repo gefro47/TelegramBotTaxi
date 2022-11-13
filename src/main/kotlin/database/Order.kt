@@ -56,3 +56,9 @@ suspend fun getOrder(_orderUuid: UUID): Order? {
         return@transaction Order.find(Orders.orderUuid eq _orderUuid).firstOrNull()
     }
 }
+
+suspend fun getOrderByDriverId(_driverChatId: Long): Order? {
+    return transaction {
+        return@transaction Order.find(Orders.driverChatId eq _driverChatId).firstOrNull()
+    }
+}

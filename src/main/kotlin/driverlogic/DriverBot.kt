@@ -119,6 +119,8 @@ class DriverBot {
             val values = it.data.split(" ")
             if (values[0] in listOf(ButtonText.ACCEPT_ORDER.name, ButtonText.DECLINE_ORDER.name)) {
                 driverAcceptDeclineOrder(context, it, values)
+            } else if (values[0] == ButtonText.DECLINE_ORDER_IN_PROGRESS.name) {
+                driverDeclinesPreviouslyAcceptedOrder(this, it, values)
             }
         }
 
@@ -224,6 +226,24 @@ class DriverBot {
             text = it.message.text!! + "\n\nYou declined this order."
         )
     }
+
+    private suspend fun driverDeclinesPreviouslyAcceptedOrder(
+            context: BehaviourContext, it: MessageDataCallbackQuery, values: List<String>) {
+        val orderUuid = UUID.fromString(values[1])
+        transaction {
+            val order = Order.find(Orders.orderUuid eq orderUuid).first()
+            order.orderState = OrderState.CANCELED
+
+            val driver = Driver.find(Drivers.chatId eq it.message.chat.id.chatId).first()
+            driver.state = DriverState.STARTED
+        }
+        // todo: no available drivers
+
+        context.edit(
+            message = it.message.withContent<TextContent>()!!,
+            text = it.message.text!! + "\n\nYou declined this order, your Driver Reputations was decreased!"
+        )
+    }
 }
 
 suspend fun getOrCreateDriver(chatId_: Long, context: BehaviourContext, message: CommonMessage<MessageContent>): Driver? {
@@ -302,11 +322,13 @@ suspend fun BehaviourContext.driverStoppedShareLocation(driver: Driver, it: Comm
             send(ChatId(driver.chatId), text)
         }
     } else {
-        val text = "You stopped sharing your location during the trip! Please, start to share it again. " +
-                "You can't mark your order as completed without location sharing, even if you complete it." +
+        val text = "You stopped sharing your location during the trip! Please, start to share it again.\n" +
+                "You can't mark your order as completed without location sharing, even if you complete it.\n" +
                 "You can decline your order, but your Driver Reputation will be decreased :("
+        val order = getOrderByDriverId(driver.chatId)!!
         val replyMarkup = inlineKeyboard { row {
-            dataButton("Decline the order? Attention!!!", ButtonText.DECLINE_ORDER_IN_PROGRESS.name)
+            dataButton("Decline the order? Attention!!!",
+                "${ButtonText.DECLINE_ORDER_IN_PROGRESS.name} ${order.orderUuid}")
         } }
         if (it != null) {
             reply(it, text, replyMarkup = replyMarkup)
