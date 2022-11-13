@@ -1,42 +1,26 @@
 package clientlogic
 
-import data.Location
-import data.TelegramUser
-import data.Trip
 import database.*
-import dev.inmo.tgbotapi.extensions.api.answers.answer
+import dev.inmo.tgbotapi.extensions.api.delete
 import dev.inmo.tgbotapi.extensions.api.edit.edit
 import dev.inmo.tgbotapi.extensions.api.edit.location.live.editLiveLocation
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.api.send.sendLiveLocation
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
-import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onContentMessage
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onLocation
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onMessageDataCallbackQuery
 import dev.inmo.tgbotapi.extensions.utils.*
 import dev.inmo.tgbotapi.extensions.utils.extensions.raw.text
-import dev.inmo.tgbotapi.extensions.utils.types.buttons.InlineKeyboardBuilder
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.types.ChatId
-import dev.inmo.tgbotapi.types.MessageId
 import dev.inmo.tgbotapi.types.location.LiveLocation
-import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
-import dev.inmo.tgbotapi.types.message.content.LiveLocationContent
-import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.TextContent
-import dev.inmo.tgbotapi.types.message.textsources.regular
 import dev.inmo.tgbotapi.utils.RiskFeature
-import dev.inmo.tgbotapi.utils.regular
 import dev.inmo.tgbotapi.utils.row
 import driverlogic.DriverBot
-import driverlogic.DriverState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import okhttp3.RequestBody
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import retrofit.RestApiService
@@ -61,7 +45,7 @@ class ClientBotLogic {
                 )
                 val locationMessageId = context.sendLiveLocation(
                     chatId = ChatId(order.clientChatId),
-                    location = LiveLocation(driver!!.currentLocationLat!!, driver.currentLocationLon!!,null, 1200),
+                    location = LiveLocation(driver!!.currentLocationLon!!, driver.currentLocationLat!!,null, 1200),
                     1200
                 ).messageId
                 transaction {
@@ -77,20 +61,21 @@ class ClientBotLogic {
         context.editLiveLocation(
             chatId = ChatId(clientChatId),
             messageId = locationMessageId,
-            location = LiveLocation(lat, lon,null, 1200)
+            location = LiveLocation(lon, lat,null, 1200)
         )
     }
 
     suspend fun notFoundDrivers(orderUUID: UUID){
         val order = getOrder(orderUUID)
         if (order != null){
-            context.send(
+            context.edit(
                 chatId = ChatId(order.clientChatId),
-                text = "Reset current process? If you accept, your rating will decrease!",
+                messageId = order.clientMessageId,
+                text = "Sorry, drivers were not found. Repeat search?",
                 replyMarkup = inlineKeyboard {
                     row {
                         dataButton("Reset", "reset")
-                        dataButton("Repeat", "reapet")
+                        dataButton("Repeat", "repeat")
                     }
                 }
             )
@@ -224,10 +209,10 @@ class ClientBotLogic {
                     }
                     "accept" -> {
                         when (client.dialogState) {
-                            StateOfClient.StateSecondGeo -> {
+                            StateOfClient.StateWaitCalc -> {
                                 edit(
                                     message = it.message.withContent<TextContent>()!!,
-                                    text = "Accepted"
+                                    text = "Accepted."
                                 )
                                 val messageId: Long = send(
                                     it.message.chat,
@@ -289,7 +274,7 @@ class ClientBotLogic {
 //                            )
                         }
                     }
-                    "reser" -> {
+                    "reset" -> {
                         println(it.message.text)
                         edit(
                             message = it.message.withContent<TextContent>()!!,
@@ -301,7 +286,7 @@ class ClientBotLogic {
                         )
                         resetClient(client)
                     }
-                    "Reapet" -> {
+                    "repeat" -> {
                         RestApiService().getInfo(
                             "${client.startLocationLon},${client.startLocationLat}",
                             "${client.endLocationLon},${client.endLocationLat}"
@@ -309,6 +294,10 @@ class ClientBotLogic {
                             if (response != null) {
                                 if (response.features.isNotEmpty()) {
                                     launch(Dispatchers.IO) {
+                                        edit(
+                                            message = it.message.withContent<TextContent>()!!,
+                                            text = "Repeated order."
+                                        )
                                         send(
                                             it.message.chat.id,
                                             """
@@ -552,5 +541,10 @@ fun calculateTrip(distance: Double): Double {
 fun getOrderByMessageId(messageId: Long): Order?{
     return transaction {
         return@transaction Order.find(Orders.clientMessageId eq messageId).firstOrNull()
+    }
+}
+fun getOrderByClientId(clientId: Long): Order?{
+    return transaction {
+        return@transaction Order.find(Orders.clientChatId eq clientId).firstOrNull()
     }
 }
