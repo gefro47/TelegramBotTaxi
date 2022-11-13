@@ -309,14 +309,20 @@ class DriverBot {
     private suspend fun driverDeclinesPreviouslyAcceptedOrder(
             context: BehaviourContext, it: MessageDataCallbackQuery, values: List<String>) {
         val orderUuid = UUID.fromString(values[1])
-        transaction {
+        val prevState = transaction {
             val order = Order.find(Orders.orderUuid eq orderUuid).first()
             order.orderState = OrderState.CANCELED
 
             val driver = Driver.find(Drivers.chatId eq it.message.chat.id.chatId).first()
+            val prevState = driver.state
             driver.state = DriverState.STARTED
+            return@transaction prevState
         }
-        // todo: no available drivers
+        if (prevState == DriverState.GOING_TO_PASSENGER) {
+            clientBot.notFoundDrivers(orderUuid)
+        } else if (prevState == DriverState.ORDER_IN_PROGRESS) {
+            clientBot.endTrip(orderUuid)
+        }
 
         context.edit(
             message = it.message.withContent<TextContent>()!!,
