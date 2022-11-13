@@ -4,8 +4,9 @@ import org.jetbrains.exposed.dao.IntEntity
 import org.jetbrains.exposed.dao.IntEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.util.UUID
+import java.util.*
 
 enum class OrderState {
     SEARCHING_DRIVER,
@@ -41,5 +42,11 @@ suspend fun addOrder(_orderUuid: UUID, _clientChatId: Long, _potentialDrivers: I
             orderState = OrderState.SEARCHING_DRIVER
             potentialDrivers = _potentialDrivers
         }
+    }
+}
+
+suspend fun getOrder(_orderUuid: UUID): Order? {
+    return transaction {
+        return@transaction Order.find(Orders.orderUuid eq _orderUuid).firstOrNull()
     }
 }

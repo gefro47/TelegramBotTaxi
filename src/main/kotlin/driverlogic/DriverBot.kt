@@ -2,17 +2,21 @@ package driverlogic
 
 import clientlogic.Client
 import clientlogic.ClientBotLogic
+import clientlogic.Clients
 import clientlogic.getClient
 import com.soywiz.klock.DateTime
 import database.*
 import dev.inmo.tgbotapi.extensions.api.bot.getMe
+import dev.inmo.tgbotapi.extensions.api.edit.edit
 import dev.inmo.tgbotapi.extensions.api.send.reply
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.*
+import dev.inmo.tgbotapi.extensions.utils.extensions.raw.text
 import dev.inmo.tgbotapi.extensions.utils.privateChatOrNull
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
+import dev.inmo.tgbotapi.extensions.utils.withContent
 import dev.inmo.tgbotapi.types.ChatId
 import dev.inmo.tgbotapi.types.chat.PrivateChat
 import dev.inmo.tgbotapi.types.location.StaticLocation
@@ -20,7 +24,10 @@ import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
 import dev.inmo.tgbotapi.types.message.content.LocationContent
 import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.StaticLocationContent
+import dev.inmo.tgbotapi.types.message.content.TextContent
+import dev.inmo.tgbotapi.types.queries.callback.MessageDataCallbackQuery
 import dev.inmo.tgbotapi.utils.row
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.util.*
 
@@ -98,7 +105,23 @@ class DriverBot {
         }
 
         context.onMessageDataCallbackQuery {
+            val values = it.data.split(" ")
+            val orderUuid = UUID.fromString(values[0])
+            val order = getOrder(orderUuid)
+            if (order == null || order.orderState != OrderState.SEARCHING_DRIVER) {
+                edit(
+                    message = it.message.withContent<TextContent>()!!,
+                    text = it.message.text!! + "\n\nUnfortunately, another driver has accepted this request earlier :( " +
+                            "We will find another order for you."
+                )
+                return@onMessageDataCallbackQuery
+            }
 
+            if (values[1] == "accept") {
+                driverAcceptsOrder(context, order, it)
+            } else {
+                driverDeclinesOrder(context, order, it)
+            }
         }
 
 //        context.onContentMessage {
@@ -141,6 +164,48 @@ class DriverBot {
         }
         addOrder(orderUuid, clientId, driverChatIds.size)
         context.sendOrderToDrivers(driverChatIds, client, orderUuid)
+    }
+
+    private suspend fun driverAcceptsOrder(context: BehaviourContext, order: Order, it: MessageDataCallbackQuery) {
+        val driverChatId = it.message.chat.id.chatId
+        val client = transaction {
+            order.orderState = OrderState.IN_PROGRESS
+            order.driverChatId = driverChatId
+
+            val driver = Driver.find(Drivers.chatId eq driverChatId).first()
+            driver.state = DriverState.GOING_TO_PASSENGER
+
+            val client = Client.find(Clients.clientId eq order.clientChatId).first()
+
+            return@transaction client
+        }
+        context.edit(
+            message = it.message.withContent<TextContent>()!!,
+            text = it.message.text!! + "\n\nOrder was accepted."
+        )
+        context.send(
+            chatId = ChatId(driverChatId),
+            text = "Please, go to this location:"
+        )
+        context.send(
+            chatId = ChatId(driverChatId),
+            location = StaticLocation(longitude = client.startLocationLon!!, latitude = client.startLocationLat!!),
+        )
+        // todo: driver is found
+    }
+
+    private suspend fun driverDeclinesOrder(context: BehaviourContext, order: Order, it: MessageDataCallbackQuery) {
+        transaction {
+            order.potentialDrivers--
+        }
+        if (order.potentialDrivers <= 0) {
+            // todo: no available drivers
+        }
+
+        context.edit(
+            message = it.message.withContent<TextContent>()!!,
+            text = it.message.text!! + "\n\nYou declined this order."
+        )
     }
 }
 
