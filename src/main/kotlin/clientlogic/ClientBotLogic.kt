@@ -1,7 +1,6 @@
 package clientlogic
 
 import database.*
-import dev.inmo.tgbotapi.extensions.api.delete
 import dev.inmo.tgbotapi.extensions.api.edit.edit
 import dev.inmo.tgbotapi.extensions.api.edit.location.live.editLiveLocation
 import dev.inmo.tgbotapi.extensions.api.send.send
@@ -24,7 +23,7 @@ import kotlinx.coroutines.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import retrofit.RestApiService
-import java.util.UUID
+import java.util.*
 
 class ClientBotLogic {
     lateinit var context: BehaviourContext
@@ -180,7 +179,7 @@ class ClientBotLogic {
                 when (answer) {
                     "decline" -> {
                         when (client.dialogState) {
-                            StateOfClient.StateSecondGeo -> {
+                            StateOfClient.StateWaitCalc -> {
                                 println(it.message.text)
                                 edit(
                                     message = it.message.withContent<TextContent>()!!,
@@ -535,7 +534,9 @@ fun resetClient(client: Client): Boolean {
 fun calculateTrip(distance: Double): Double {
     val tariff = 0.5
     println(distance)
-    return ((distance / 1000) * tariff) + 1
+    val number:Double = ((distance / 1000) * tariff) + 1
+    val number3digits:Double = Math.round(number * 1000.0) / 1000.0
+    return Math.round(number3digits * 100.0) / 100.0
 }
 
 fun getOrderByMessageId(messageId: Long): Order?{
