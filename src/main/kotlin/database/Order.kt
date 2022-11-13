@@ -5,6 +5,7 @@ import org.jetbrains.exposed.dao.IntEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.util.*
 
@@ -57,8 +58,10 @@ suspend fun getOrder(_orderUuid: UUID): Order? {
     }
 }
 
-suspend fun getOrderByDriverId(_driverChatId: Long): Order? {
+suspend fun getOrderByDriverIdAndState(_driverChatId: Long, _orderState: OrderState): Order? {
     return transaction {
-        return@transaction Order.find(Orders.driverChatId eq _driverChatId).firstOrNull()
+        return@transaction Order.find(
+            Orders.driverChatId eq _driverChatId and (Orders.orderState eq _orderState)
+        ).firstOrNull()
     }
 }

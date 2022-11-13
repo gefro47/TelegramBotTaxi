@@ -41,4 +41,9 @@ class Client(id: EntityID<Int>): IntEntity(id){
     var distance by Clients.distance
     var price by Clients.price
     var driverId by Clients.driverId
+
+    override fun toString(): String {
+        return "clientId=$clientId, startLocationLat=$startLocationLat, startLocationLon=$startLocationLon, " +
+                "endLocationLat=$endLocationLat, endLocationLon=$endLocationLon"
+    }
 }
