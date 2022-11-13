@@ -44,7 +44,7 @@ suspend fun addOrder(_orderUuid: UUID, _clientChatId: Long, _clientMessageId: Lo
             clientChatId = _clientChatId
             clientMessageId = _clientMessageId
             driverChatId = null
-            orderState = OrderState.SEARCHING_DRIVER
+            orderState = if (_potentialDrivers > 0) OrderState.SEARCHING_DRIVER else OrderState.CANCELED
             potentialDrivers = _potentialDrivers
             locationMessageId = null
         }

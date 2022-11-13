@@ -81,6 +81,11 @@ class DriverBot {
                             "If you'd like to stop waiting for passengers, just stop sharing your location."
                 )
             } else if (driver.state in listOf(DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
+                val order = getOrderByDriverId(driver.chatId)
+                order?.locationMessageId?.let {
+                    clientBot.editLocationMessage(it, order.clientChatId,
+                        driver.currentLocationLat!!, driver.currentLocationLon!!)
+                }
                 reply(
                     it, "Thank you, we're receiving your location again! Have a nice journey! =)"
                 )
@@ -112,13 +117,19 @@ class DriverBot {
                     it, "Thank you for sharing your location! We're looking for the passengers for you. " +
                             "If you'd like to stop waiting for passengers, just stop sharing your location."
                 )
+            } else if (driver.state in listOf(DriverState.GOING_TO_PASSENGER, DriverState.ORDER_IN_PROGRESS)) {
+                val order = getOrderByDriverId(driver.chatId)
+                order?.locationMessageId?.let {
+                    clientBot.editLocationMessage(it, order.clientChatId,
+                        driver.currentLocationLat!!, driver.currentLocationLon!!)
+                }
             }
         }
 
         context.onMessageDataCallbackQuery {
             val values = it.data.split(" ")
             if (values[0] in listOf(ButtonText.ACCEPT_ORDER.name, ButtonText.DECLINE_ORDER.name)) {
-                driverAcceptDeclineOrder(context, it, values)
+                driverAcceptOrDeclineOrder(context, it, values)
             } else if (values[0] == ButtonText.DECLINE_ORDER_IN_PROGRESS.name) {
                 driverDeclinesPreviouslyAcceptedOrder(this, it, values)
             }
@@ -159,14 +170,14 @@ class DriverBot {
                 driverChatIds.add(driver.chatId)
             }
         }
-        if (driverChatIds.isEmpty()) {
-//            clientBot.driverNotFound()  todo
-        }
         addOrder(orderUuid, clientId, clientMessageId, driverChatIds.size)
+        if (driverChatIds.isEmpty()) {
+            clientBot.notFoundDrivers(orderUuid)
+        }
         context.sendOrderToDrivers(driverChatIds, client, orderUuid)
     }
 
-    private suspend fun driverAcceptDeclineOrder(context: BehaviourContext, it: MessageDataCallbackQuery, values: List<String>) {
+    private suspend fun driverAcceptOrDeclineOrder(context: BehaviourContext, it: MessageDataCallbackQuery, values: List<String>) {
         val orderUuid = UUID.fromString(values[1])
         val order = getOrder(orderUuid)
         if (order == null || order.orderState != OrderState.SEARCHING_DRIVER) {
@@ -175,7 +186,7 @@ class DriverBot {
                 text = it.message.text!! + "\n\nUnfortunately, this order is no longer available :( " +
                         "We will find another order for you."
             )
-            return@driverAcceptDeclineOrder
+            return@driverAcceptOrDeclineOrder
         }
 
         if (values[0] == ButtonText.ACCEPT_ORDER.name) {
@@ -210,15 +221,18 @@ class DriverBot {
             chatId = ChatId(driverChatId),
             location = StaticLocation(longitude = client.startLocationLon!!, latitude = client.startLocationLat!!),
         )
-        // todo: driver is found
+        clientBot.sendDriver(order.orderUuid)
     }
 
     private suspend fun driverDeclinesOrder(context: BehaviourContext, order: Order, it: MessageDataCallbackQuery) {
         transaction {
             order.potentialDrivers--
+            if (order.potentialDrivers <= 0) {
+                order.orderState = OrderState.CANCELED
+            }
         }
-        if (order.potentialDrivers <= 0) {
-            // todo: no available drivers
+        if (order.orderState == OrderState.CANCELED) {
+            clientBot.notFoundDrivers(order.orderUuid)
         }
 
         context.edit(
